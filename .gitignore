@@ -1,0 +1,4 @@
+.sw[a-z]
+.*.sw[a-z]
+*.o
+string-plugin.so

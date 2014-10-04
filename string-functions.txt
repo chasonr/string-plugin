@@ -1,0 +1,20 @@
+# If no string functions list is given to string-plugin, it will use the list
+# given below.  Each line has two or three columns separated by whitespace
+# and their meaning is as follows:
+# Column 1 -- the name of a string function to be checked.
+# Column 2 -- the argument that is the unbounded string, where the first
+#             argument is 1.
+#             Functions may be listed more than once, so that more than one
+#             argument can be checked.
+# Column 3 -- a replacement function that accepts a size for its output string.
+#             If this column is not present, no replacement is suggested in
+#             the message.
+#
+# Empty lines are ignored.  Comments begin with # and proceed to the end of
+# the line.
+sprintf  1 snprintf
+vsprintf 1 vsnprintf
+strcpy   1
+strcat   1
+wcscpy   1
+wcscat   1

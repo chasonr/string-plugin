@@ -1,0 +1,47 @@
+# If no format functions list is given to format-plugin, it will use the list
+# given below.  Each line has three or four columns separated by whitespace
+# and their meaning is as follows:
+# Column 1 -- the name of a format function to be checked.
+# Column 2 -- identifies the type of format function: printf, scanf, NSString,
+#             strftime, strfmon, kprintf or gettext.
+#             If this column is gettext, the function is not a format function
+#             but rather passes a format string onward by way of its return
+#             value (as the format_arg attribute in GCC).  Such functions may
+#             accept one or more format strings, and this is expressed by
+#             listing the function once for each format string it accepts.
+# Column 3 -- the argument that is the format string, where the first argument
+#             is 1.
+# Column 4 -- the argument that is the first variable argument, where the
+#             first argument is 1.
+#             If this column is 0 or not present, the function accepts a
+#             va_list and the arguments are not checked.
+#
+# Empty lines are ignored.  Comments begin with # and proceed to the end of
+# the line.
+wprintf      printf   1 2
+fwprintf     printf   2 3
+swprintf     printf   2 3
+vwprintf     printf   1 0
+vfwprintf    printf   2 0
+vswprintf    printf   2 0
+wscanf       scanf    1 2
+fwscanf      scanf    2 3
+swscanf      scanf    2 3
+vwscanf      scanf    1 0
+vfwscanf     scanf    2 0
+vswscanf     scanf    2 0
+wprintf_s    printf   1 2
+fwprintf_s   printf   2 3
+swprintf_s   printf   3 4
+snwprintf_s  printf   3 4
+vwprintf_s   printf   1 0
+vfwprintf_s  printf   2 0
+vswprintf_s  printf   3 0
+vsnwprintf_s printf   3 0
+wscanf_s     scanf    1 2
+fwscanf_s    scanf    2 3
+swscanf_s    scanf    2 3
+vwscanf_s    scanf    1 0
+vfwscanf_s   scanf    2 0
+vswscanf_s   scanf    2 0
+wcsftime     strftime 3 0
