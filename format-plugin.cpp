@@ -113,7 +113,7 @@ public:
     }
 
 private:
-    void processFormat(clang::CallExpr *expr, FunctionDesc const & desc)
+    void processFormat(clang::CallExpr *expr, FunctionDesc const & desc) const
     {
         std::vector<FormatString> formats;
 
@@ -157,7 +157,7 @@ private:
 
     void getFormatStrings(
             std::vector<FormatString>& formats,
-            clang::Expr const *arg)
+            clang::Expr const *arg) const
     {
         if (arg == nullptr) { return; }
 
