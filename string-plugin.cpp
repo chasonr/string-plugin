@@ -33,6 +33,7 @@ FunctionSubst const default_function_list[] = {
     { "strcat", 1, "" },
     { "wcscpy", 1, "" },
     { "wcscat", 1, "" },
+    { "gets",   1, "fgets" },
 };
 
 class StringVisitor : public clang::RecursiveASTVisitor<StringVisitor> {

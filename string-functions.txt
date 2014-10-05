@@ -18,3 +18,4 @@ strcpy   1
 strcat   1
 wcscpy   1
 wcscat   1
+gets     1 fgets
