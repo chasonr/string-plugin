@@ -52,12 +52,6 @@ FunctionDesc const default_function_list[] = {
     { "vfwprintf_s",  clang::Sema::FST_Printf,   2, 0 },
     { "vswprintf_s",  clang::Sema::FST_Printf,   3, 0 },
     { "vsnwprintf_s", clang::Sema::FST_Printf,   3, 0 },
-    { "wscanf_s",     clang::Sema::FST_Scanf,    1, 2 },
-    { "fwscanf_s",    clang::Sema::FST_Scanf,    2, 3 },
-    { "swscanf_s",    clang::Sema::FST_Scanf,    2, 3 },
-    { "vwscanf_s",    clang::Sema::FST_Scanf,    1, 0 },
-    { "vfwscanf_s",   clang::Sema::FST_Scanf,    2, 0 },
-    { "vswscanf_s",   clang::Sema::FST_Scanf,    2, 0 },
     // Wide string time
     { "wcsftime",     clang::Sema::FST_Strftime, 3, 0 },
 };

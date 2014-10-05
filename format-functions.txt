@@ -38,10 +38,4 @@ vwprintf_s   printf   1 0
 vfwprintf_s  printf   2 0
 vswprintf_s  printf   3 0
 vsnwprintf_s printf   3 0
-wscanf_s     scanf    1 2
-fwscanf_s    scanf    2 3
-swscanf_s    scanf    2 3
-vwscanf_s    scanf    1 0
-vfwscanf_s   scanf    2 0
-vswscanf_s   scanf    2 0
 wcsftime     strftime 3 0
