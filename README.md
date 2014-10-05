@@ -22,7 +22,7 @@ If string-plugin is enabled, you can accept the default list of unbounded string
 
 See the file string-functions.txt for the default list and a description of the format.  This will find all calls to functions on the list and indicate which ones are writing to arrays, and which to pointers.  The ones that write to arrays can then be quickly converted to a bounded equivalent, such as snprintf instead of printf, and the rest can be converted by providing the output size some other way.
 
-Where writes to arrays are converted, the size should be determined by an expression of the form ```sizeof(x)/sizeof(x[0])```, even if x is an array of char.  This expression may be bundled into a macro.  string-plugin looks for expressions of the form ```sizeof(x)/sizeof(y)``` and raises a warning unless x is an array and y has the same type as x[0].  If a pointer is passed to such an expression, it will compile, but the result will be meaningless; the string-plugin warning finds such mistakes.
+Where writes to arrays are converted, the size should be determined by an expression of the form ```sizeof(x)/sizeof(x[0])```, even if x is an array of char.  This expression may be bundled into a macro.  string-plugin looks for expressions of the form ```sizeof(x)/sizeof(y)``` and raises a warning if x is a pointer.  If a pointer is passed to such an expression, it will compile, but the result will be meaningless; the string-plugin warning finds such mistakes.
 
 If format-plugin is enabled, you can accept the default list of wide-string formatting functions (such as wprintf), or define your own list and pass it to the plugin as follows:
 

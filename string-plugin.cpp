@@ -100,15 +100,10 @@ public:
         if (lhs_u->getKind() != clang::UETT_SizeOf) { return true; }
         if (rhs_u->getKind() != clang::UETT_SizeOf) { return true; }
 
-        // Report this expression unless x is an array and y has the type of
-        // an element of x
+        // Report this expression if x is a pointer
         const clang::Type *x_type = lhs_u->getTypeOfArgument().getTypePtrOrNull();
-        const clang::Type *y_type = rhs_u->getTypeOfArgument().getTypePtrOrNull();
-        if (x_type != nullptr && y_type != nullptr
-        &&  x_type->isArrayType()
-        &&  x_type->getArrayElementTypeNoTypeQual() == y_type) {
-            return true;
-        }
+        if (x_type == nullptr) { return true; }
+        if (!x_type->isPointerType()) { return true; }
 
         diagnostics.Report(op->getLocStart(), suspicious_sizeof);
         return true;
