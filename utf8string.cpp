@@ -25,7 +25,6 @@ std::string stringFromBytes(clang::StringLiteral const *str)
 
         std::memcpy(&in_ch, b.c_str()+i, sizeof(chtype));
         i += sizeof(chtype);
-        // Assume UTF-32 if range is sufficient; else UTF-16
         utf32 = in_ch;
         if (!is_utf32) {
             // Convert from UTF-16
@@ -80,14 +79,13 @@ std::string stringToUTF8(clang::StringLiteral const *str)
         return str->getString().str();
 
     case clang::StringLiteral::Wide:
+        // Assume UTF-32 if range is sufficient; else UTF-16
         return stringFromBytes<wchar_t, std::numeric_limits<wchar_t>::max() >= 0x10FFFF>(str);
 
     case clang::StringLiteral::UTF16:
         return stringFromBytes<char16_t, false>(str);
-        break;
 
     case clang::StringLiteral::UTF32:
         return stringFromBytes<char32_t, true>(str);
-        break;
     }
 }
