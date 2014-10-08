@@ -61,7 +61,9 @@ public:
         if (d == nullptr) { return true; }
 
         // Determine whether the function is one we're looking for
-        llvm::StringRef const name = d->getIdentifier()->getName();
+        auto ident = d->getIdentifier();
+        if (ident == nullptr) { return true; }
+        llvm::StringRef const name = ident->getName();
         for (auto fs = function_list.begin(); fs != function_list.end(); ++fs) {
             // A function may appear more than once on the list, to check
             // more than one argument

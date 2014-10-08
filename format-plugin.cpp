@@ -94,7 +94,9 @@ public:
         // core; don't duplicate the warning
         if (!d->hasAttr<clang::FormatAttr>()) {
             // Determine whether the function is one we're looking for
-            llvm::StringRef const name = d->getIdentifier()->getName();
+            auto ident = d->getIdentifier();
+            if (ident == nullptr) { return true; }
+            llvm::StringRef const name = ident->getName();
             for (auto fs = function_list.begin(); fs != function_list.end(); ++fs) {
                 if (name == fs->name) {
                     processFormat(exp, *fs);
@@ -172,7 +174,9 @@ private:
                         getFormatStrings(formats, call->getArg((*a)->getFormatIdx()-1));
                     }
                 } else {
-                    llvm::StringRef const name = d->getIdentifier()->getName();
+                    auto ident = d->getIdentifier();
+                    if (ident == nullptr) { goto warn; }
+                    llvm::StringRef const name = ident->getName();
                     bool found = false;
                     for (auto a = gettext_list.begin();
                         a != gettext_list.end(); ++a) {
