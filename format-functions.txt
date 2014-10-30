@@ -20,10 +20,10 @@
 # the line.
 wprintf      printf   1 2
 fwprintf     printf   2 3
-swprintf     printf   2 3
+swprintf     printf   3 4
 vwprintf     printf   1 0
 vfwprintf    printf   2 0
-vswprintf    printf   2 0
+vswprintf    printf   3 0
 wscanf       scanf    1 2
 fwscanf      scanf    2 3
 swscanf      scanf    2 3

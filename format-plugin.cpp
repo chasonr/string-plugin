@@ -33,10 +33,10 @@ FunctionDesc const default_function_list[] = {
     // Wide string formatting
     { "wprintf",      clang::Sema::FST_Printf,   1, 2 },
     { "fwprintf",     clang::Sema::FST_Printf,   2, 3 },
-    { "swprintf",     clang::Sema::FST_Printf,   2, 3 },
+    { "swprintf",     clang::Sema::FST_Printf,   3, 4 },
     { "vwprintf",     clang::Sema::FST_Printf,   1, 0 },
     { "vfwprintf",    clang::Sema::FST_Printf,   2, 0 },
-    { "vswprintf",    clang::Sema::FST_Printf,   2, 0 },
+    { "vswprintf",    clang::Sema::FST_Printf,   3, 0 },
     { "wscanf",       clang::Sema::FST_Scanf,    1, 2 },
     { "fwscanf",      clang::Sema::FST_Scanf,    2, 3 },
     { "swscanf",      clang::Sema::FST_Scanf,    2, 3 },
