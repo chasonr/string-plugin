@@ -20,6 +20,7 @@
 
 #include "split.h"
 #include "utf8string.h"
+#include "compat.h"
 
 namespace {
 
@@ -244,14 +245,14 @@ private:
 
 class FormatAction : public clang::PluginASTAction {
 public:
-    clang::ASTConsumer* CreateASTConsumer(clang::CompilerInstance& inst, llvm::StringRef str) override
+	clang_compat::ASTConsumerPtr CreateASTConsumer(clang::CompilerInstance& inst, llvm::StringRef str) override
     {
         if (function_list.empty()) {
             for (std::size_t i = 0; i < sizeof(default_function_list)/sizeof(default_function_list[0]); ++i) {
                 function_list.push_back(default_function_list[i]);
             }
         }
-        return new FormatASTConsumer(inst, function_list, gettext_list);
+        return clang_compat::ASTConsumerPtr(new FormatASTConsumer(inst, function_list, gettext_list));
     }
 
     bool ParseArgs(const clang::CompilerInstance& inst,
