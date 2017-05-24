@@ -179,6 +179,82 @@ typeName(clang::BuiltinType::Kind kind)
     }
 }
 
+static clang::BuiltinType::Kind
+getSignedKind(clang::BuiltinType::Kind u_kind)
+{
+    if (clang::BuiltinType::Kind::Char_S <= u_kind
+            && u_kind <= clang::BuiltinType::Kind::Int128) {
+        return u_kind;
+    }
+
+    switch (u_kind) {
+    case clang::BuiltinType::Kind::Char_U:
+        return clang::BuiltinType::Kind::Char_S;
+
+    case clang::BuiltinType::Kind::UChar:
+        return clang::BuiltinType::Kind::SChar;
+
+    case clang::BuiltinType::Kind::WChar_U:
+        return clang::BuiltinType::Kind::WChar_S;
+
+    case clang::BuiltinType::Kind::UShort:
+        return clang::BuiltinType::Kind::Short;
+
+    case clang::BuiltinType::Kind::UInt:
+        return clang::BuiltinType::Kind::Int;
+
+    case clang::BuiltinType::Kind::ULong:
+        return clang::BuiltinType::Kind::Long;
+
+    case clang::BuiltinType::Kind::ULongLong:
+        return clang::BuiltinType::Kind::LongLong;
+
+    case clang::BuiltinType::Kind::UInt128:
+        return clang::BuiltinType::Kind::Int128;
+
+    default:
+        return clang::BuiltinType::Void;
+    }
+}
+
+static clang::BuiltinType::Kind
+getUnsignedKind(clang::BuiltinType::Kind s_kind)
+{
+    if (clang::BuiltinType::Kind::Char_U <= s_kind
+            && s_kind <= clang::BuiltinType::Kind::UInt128) {
+        return s_kind;
+    }
+
+    switch (s_kind) {
+    case clang::BuiltinType::Kind::Char_S:
+        return clang::BuiltinType::Kind::Char_U;
+
+    case clang::BuiltinType::Kind::SChar:
+        return clang::BuiltinType::Kind::UChar;
+
+    case clang::BuiltinType::Kind::WChar_S:
+        return clang::BuiltinType::Kind::WChar_U;
+
+    case clang::BuiltinType::Kind::Short:
+        return clang::BuiltinType::Kind::UShort;
+
+    case clang::BuiltinType::Kind::Int:
+        return clang::BuiltinType::Kind::UInt;
+
+    case clang::BuiltinType::Kind::Long:
+        return clang::BuiltinType::Kind::ULong;
+
+    case clang::BuiltinType::Kind::LongLong:
+        return clang::BuiltinType::Kind::ULongLong;
+
+    case clang::BuiltinType::Kind::Int128:
+        return clang::BuiltinType::Kind::UInt128;
+
+    default:
+        return clang::BuiltinType::Void;
+    }
+}
+
 struct FormatString
 {
     std::string string;
@@ -250,6 +326,44 @@ public:
         }
         for (auto gs = gettexts.begin(); gs != gettexts.end(); ++gs) {
             gettext_list.push_back(*gs);
+        }
+
+        // Get the type kinds for various types defined in the environment
+        auto size_type = instance.getASTContext().getSizeType();
+        auto bi_type = clang::dyn_cast<clang::BuiltinType>(size_type);
+        size_type_kind = bi_type->getKind();
+        ssize_type_kind = getSignedKind(size_type_kind);
+
+        auto intmax_type = instance.getASTContext().getIntMaxType();
+        bi_type = clang::dyn_cast<clang::BuiltinType>(intmax_type);
+        intmax_type_kind = bi_type->getKind();
+
+        auto uintmax_type = instance.getASTContext().getIntMaxType();
+        bi_type = clang::dyn_cast<clang::BuiltinType>(uintmax_type);
+        uintmax_type_kind = bi_type->getKind();
+
+        auto wchar_type = instance.getASTContext().getWideCharType();
+        bi_type = clang::dyn_cast<clang::BuiltinType>(wchar_type);
+        wchar_type_kind = bi_type->getKind();
+
+        auto ptrdiff_type = instance.getASTContext().getWideCharType();
+        bi_type = clang::dyn_cast<clang::BuiltinType>(ptrdiff_type);
+        ptrdiff_type_kind = bi_type->getKind();
+        uptrdiff_type_kind = getUnsignedKind(ptrdiff_type_kind);
+
+        // No function to get wint_t. Assume that it is the promoted version
+        // of wchar_t.
+        if (clang::BuiltinType::Kind::Char_S <= wchar_type_kind
+                && wchar_type_kind <= clang::BuiltinType::Kind::Int) {
+            wint_type_kind = clang::BuiltinType::Int;
+            uwint_type_kind = clang::BuiltinType::UInt;
+        } else if (clang::BuiltinType::Kind::Bool <= wchar_type_kind
+                && wchar_type_kind <= clang::BuiltinType::Kind::UInt) {
+            wint_type_kind = clang::BuiltinType::Int;
+            uwint_type_kind = clang::BuiltinType::UInt;
+        } else {
+            wint_type_kind = getSignedKind(wchar_type_kind);
+            uwint_type_kind = getUnsignedKind(wchar_type_kind);
         }
     }
 
@@ -634,17 +748,15 @@ private:
                 } else if (modifier == "ll") {
                     kind1 = clang::BuiltinType::LongLong;
                     kind2 = clang::BuiltinType::ULongLong;
-#if 0 // TODO
                 } else if (modifier == "j") { // ptrdiff_t
-                    kind1 = clang::BuiltinType::Int;
-                    kind2 = clang::BuiltinType::UInt;
+                    kind1 = ptrdiff_type_kind;
+                    kind2 = uptrdiff_type_kind;
                 } else if (modifier == "z") { // size_t
-                    kind1 = clang::BuiltinType::Int;
-                    kind2 = clang::BuiltinType::UInt;
+                    kind1 = ssize_type_kind;
+                    kind2 = size_type_kind;
                 } else if (modifier == "t") { // intmax_t
-                    kind1 = clang::BuiltinType::Int;
-                    kind2 = clang::BuiltinType::UInt;
-#endif
+                    kind1 = intmax_type_kind;
+                    kind2 = uintmax_type_kind;
                 } else {
                     // Modifier not compatible
                     diagnostics.Report(warn_here,
@@ -682,29 +794,27 @@ private:
             case 'c':
                 if (modifier.empty()) {
                     kind1 = clang::BuiltinType::Int;
-#if 0 // TODO
+                    kind2 = kind1;
                 } else if (modifier == "l") { // wint_t
-                    kind1 = clang::BuiltinType::Int;
-#endif
+                    kind1 = wint_type_kind;
+                    kind2 = uwint_type_kind;
                 } else {
                     // Modifier not compatible
                     diagnostics.Report(warn_here,
                             warn_format_nonsensical_length)
                         << modifier << type;
                     kind1 = clang::BuiltinType::Int;
+                    kind2 = kind1;
                 }
-                kind2 = kind1;
                 break;
 
             case 's':
                 if (modifier.empty()) {
                     kind1 = clang::BuiltinType::Char_S;
                     kind2 = clang::BuiltinType::Char_U;
-#if 0 // TODO
                 } else if (modifier == "l") { // wchar_t
-                    kind1 = clang::BuiltinType::Int;
+                    kind1 = wchar_type_kind;
                     kind2 = kind1;
-#endif
                 } else {
                     // Modifier not compatible
                     diagnostics.Report(warn_here,
@@ -744,14 +854,12 @@ private:
                     kind1 = clang::BuiltinType::Long;
                 } else if (modifier == "ll") {
                     kind1 = clang::BuiltinType::LongLong;
-#if 0 // TODO
                 } else if (modifier == "j") { // ptrdiff_t
-                    kind1 = clang::BuiltinType::Int;
+                    kind1 = ptrdiff_type_kind;
                 } else if (modifier == "z") { // size_t
-                    kind1 = clang::BuiltinType::Int;
+                    kind1 = ssize_type_kind;
                 } else if (modifier == "t") { // intmax_t
-                    kind1 = clang::BuiltinType::Int;
-#endif
+                    kind1 = intmax_type_kind;
                 } else {
                     // Modifier not compatible
                     diagnostics.Report(warn_here,
@@ -764,7 +872,6 @@ private:
                 const_pointer = false;
                 break;
 
-#if 0 // TODO
             case 'C': // wint_t
                 if (!modifier.empty()) {
                     // Modifier not compatible
@@ -772,8 +879,8 @@ private:
                             warn_format_nonsensical_length)
                         << modifier << type;
                 }
-                kind1 = clang::BuiltinType::Int;
-                kind2 = kind1;
+                kind1 = wint_type_kind;
+                kind2 = uwint_type_kind;
                 break;
 
             case 'S': // wchar_t
@@ -783,12 +890,11 @@ private:
                             warn_format_nonsensical_length)
                         << modifier << type;
                 }
-                kind1 = clang::BuiltinType::Int;
+                kind1 = wchar_type_kind;
                 kind2 = kind1;
                 pointer = true;
                 const_pointer = true;
                 break;
-#endif
 
             default:
                 // Unknown type specifier
@@ -1008,6 +1114,15 @@ private:
     unsigned plugin_warn_bad_percent;
     unsigned plugin_warn_zero_and_precision;
     unsigned plugin_warn_n_format;
+    clang::BuiltinType::Kind size_type_kind;
+    clang::BuiltinType::Kind ssize_type_kind;
+    clang::BuiltinType::Kind intmax_type_kind;
+    clang::BuiltinType::Kind uintmax_type_kind;
+    clang::BuiltinType::Kind wchar_type_kind;
+    clang::BuiltinType::Kind ptrdiff_type_kind;
+    clang::BuiltinType::Kind uptrdiff_type_kind;
+    clang::BuiltinType::Kind wint_type_kind;
+    clang::BuiltinType::Kind uwint_type_kind;
     std::vector<FunctionDesc> function_list;
     std::vector<GettextDesc> gettext_list;
 };
