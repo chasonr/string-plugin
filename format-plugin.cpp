@@ -309,6 +309,9 @@ public:
         warn_printf_data_arg_not_used = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
             "data argument not used by format string");
 
+        warn_scanf_nonzero_width = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+            "zero field width in scanf format string is unused");
+
         plugin_warn_duplicate_flag = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
                 "flag '%0' used more than once");
 
@@ -320,6 +323,9 @@ public:
 
         plugin_warn_n_format = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
                 "printf_s does not allow the 'n' conversion specifier");
+
+        plugin_warn_need_width = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                "'%%%0' without width is dangerous");
 
         for (auto fs = functions.begin(); fs != functions.end(); ++fs) {
             function_list.push_back(*fs);
@@ -437,6 +443,12 @@ private:
 
         case FormatStringType::scanf:
         case FormatStringType::scanf_s:
+            // scanf and scanf_s differ only in that scanf_s accepts a second
+            // argument after any string received by %s, %c or %[; this argument
+            // is an rsize_t that is the number of characters in the buffer
+            checkScanf(fexpr, args, desc);
+            break;
+
         case FormatStringType::NSString:
         case FormatStringType::strftime:
         case FormatStringType::strfmon:
@@ -704,7 +716,7 @@ private:
                 } else {
                     positions_used.push_back(param);
                 }
-                if (!long_warned && param > args.size() - (desc.var_arg - 1U)) {
+                if (param > args.size() - (desc.var_arg - 1U)) {
                     // Arg number exceeds the number of arguments
                     diagnostics.Report(warn_here,
                             warn_printf_positional_arg_exceeds_data_args)
@@ -946,7 +958,7 @@ private:
                     << type;
             }
 
-            if (param < args.size()) {
+            if (param < args.size() && desc.var_arg != 0U) {
                 std::string expected;
                 bool warn_match = false;
                 const clang::Expr *arg = args[param];
@@ -991,6 +1003,417 @@ private:
                         << "'" + expected + "'"
                         << "'" + arg->getType().getAsString() + "'"
                         << 0;
+                }
+            }
+        }
+
+        // Warn if positional and nonpositional parameters are mixed
+        if (positional && nonpositional) {
+            // Positional and nonpositional parameters are mixed
+            diagnostics.Report(fexpr->getLocStart(),
+                warn_format_mix_positional_nonpositional_args);
+        }
+
+        // Warn if positional parameters are used and any are skipped
+        if (positional) {
+            std::sort(positions_used.begin(), positions_used.end());
+            unsigned last = 0U;
+            for (auto i = positions_used.cbegin();
+                    i != positions_used.cend(); ++i) {
+                // A position may be used more than once
+                for (unsigned j = last + 1U; j < *i; ++j) {
+                    unsigned pos = desc.var_arg + j - 2U;
+                    if (pos >= args.size()) break;
+                    diagnostics.Report(args[pos]->getLocStart(),
+                            warn_printf_data_arg_not_used);
+                }
+                last = *i;
+            }
+            position = positions_used.empty() ? 0U : positions_used.back();
+        }
+        // Warn if arguments at the end are unused
+        for (unsigned pos = desc.var_arg + position - 1U;
+                pos < args.size(); ++pos) {
+            diagnostics.Report(args[pos]->getLocStart(),
+                    warn_printf_data_arg_not_used);
+        }
+    }
+
+    void checkScanf(
+            clang::StringLiteral const *fexpr,
+            llvm::ArrayRef<const clang::Expr *> const & args,
+            FunctionDesc const & desc) const
+    {
+        static const std::regex format_rx(
+                "%([0-9]+\\$|)"                  // Introduction
+                "(\\*?)"                         // Flags
+                "([0-9]+|)"                      // Width
+                "(hh|ll|[hljztL]|)"              // Type modifier
+                "(\\[\\^.+?\\]|\\[[^^].*?\\]|.)"); // Type
+
+        // Format
+        std::string format = fexpr->getBytes().str();
+
+        // Look for mixed positional and non-positional arguments
+        bool positional = false;
+        bool nonpositional = false;
+
+        // Give the "too many conversions" warning only once
+        bool long_warned = false;
+
+        // For non-positional arguments, this is the offset to the next argument
+        unsigned position = 0U;
+
+        // This will catch positional specifiers that skip arguments
+        std::vector<unsigned> positions_used;
+
+        std::smatch match;
+        for (auto where = format.cbegin(); // Start next match from this offset
+             std::regex_search(where, format.cend(), match, format_rx);
+             where += match.position() + match.length()) {
+            clang::SourceLocation warn_here = fexpr->getLocStart().getLocWithOffset(
+                    where - format.cbegin() + match.position() + 1);
+
+            // One format specifier
+            std::string specifier(match[0].str());
+            std::string param_str(match[1].str());
+            std::string suppress(match[2].str());
+            std::string width_str(match[3].str());
+            std::string modifier(match[4].str());
+            std::string type(match[5].str());
+
+            // If width is present, it must not be zero.
+            unsigned width = 0U;
+            if (!width_str.empty()) {
+                width = std::strtoul(width_str.c_str(), nullptr, 10);
+                if (width == 0U) {
+                    diagnostics.Report(warn_here,
+                            warn_scanf_nonzero_width);
+                }
+            }
+
+            // Check for %%
+            if (type == "%") {
+                // "Matches a single % character; no conversion or assignment
+                // occurs. The complete conversion specification shall be %%."
+                // -- ISO/IEC 9899:2011, 7.21.6.2 "The fscanf function",
+                //    paragraph 12
+                if (specifier != "%%") {
+                    // Invalid % specifier
+                    diagnostics.Report(warn_here,
+                            plugin_warn_bad_percent);
+                }
+                continue;
+            }
+
+            // If no argument is used, stop here
+            if (!suppress.empty()) {
+                continue;
+            }
+
+            // Identify the parameter that matches this specifier
+            unsigned param;
+            if (param_str.empty()) {
+                param = ++position;
+                nonpositional = true;
+                if (!long_warned && param > args.size() - (desc.var_arg - 1U)) {
+                    // Too many % specifiers
+                    diagnostics.Report(warn_here,
+                            warn_printf_insufficient_data_args);
+                    long_warned = true;
+                }
+            } else {
+                param = std::strtoul(param_str.c_str(), nullptr, 10);
+                positional = true;
+                if (param == 0) {
+                    diagnostics.Report(warn_here,
+                            warn_format_zero_positional_specifier);
+                    param = 1;
+                } else {
+                    positions_used.push_back(param);
+                }
+                if (param > args.size() - (desc.var_arg - 1U)) {
+                    // Arg number exceeds the number of arguments
+                    diagnostics.Report(warn_here,
+                            warn_printf_positional_arg_exceeds_data_args)
+                        << param
+                        << static_cast<unsigned>(args.size() - (desc.var_arg - 1U));
+                }
+            }
+            param = param + desc.var_arg - 2U;
+
+            // Identify the desired type of the parameter
+            clang::BuiltinType::Kind kind1 = clang::BuiltinType::Void;
+            clang::BuiltinType::Kind kind2 = clang::BuiltinType::Void;
+            std::string expected;
+            switch (type[0]) {
+            case 'd':
+            case 'i':
+            case 'n':
+                if (modifier.empty()) {
+                    expected = "int *";
+                    kind1 = clang::BuiltinType::Int;
+                    kind2 = clang::BuiltinType::UInt;
+                } else if (modifier == "hh") {
+                    expected = "signed char *";
+                    kind1 = clang::BuiltinType::SChar;
+                    kind2 = clang::BuiltinType::UChar;
+                } else if (modifier == "h") {
+                    expected = "short *";
+                    kind1 = clang::BuiltinType::Short;
+                    kind2 = clang::BuiltinType::UShort;
+                } else if (modifier == "l") {
+                    expected = "long *";
+                    kind1 = clang::BuiltinType::Long;
+                    kind2 = clang::BuiltinType::ULong;
+                } else if (modifier == "ll") {
+                    expected = "long long *";
+                    kind1 = clang::BuiltinType::LongLong;
+                    kind2 = clang::BuiltinType::ULongLong;
+                } else if (modifier == "j") { // ptrdiff_t
+                    expected = "ptrdiff_t *";
+                    kind1 = ptrdiff_type_kind;
+                    kind2 = uptrdiff_type_kind;
+                } else if (modifier == "z") { // size_t
+                    expected = "size_t *";
+                    kind1 = ssize_type_kind;
+                    kind2 = size_type_kind;
+                } else if (modifier == "t") { // intmax_t
+                    expected = "intmax_t *";
+                    kind1 = intmax_type_kind;
+                    kind2 = uintmax_type_kind;
+                } else {
+                    // Modifier not compatible
+                    diagnostics.Report(warn_here,
+                            warn_format_nonsensical_length)
+                        << modifier << type;
+                    expected = "int *";
+                    kind1 = clang::BuiltinType::Int;
+                    kind2 = clang::BuiltinType::UInt;
+                }
+                break;
+
+            case 'o':
+            case 'u':
+            case 'x':
+            case 'X':
+                if (modifier.empty()) {
+                    expected = "unsigned int *";
+                    kind1 = clang::BuiltinType::Int;
+                    kind2 = clang::BuiltinType::UInt;
+                } else if (modifier == "hh") {
+                    expected = "unsigned char *";
+                    kind1 = clang::BuiltinType::SChar;
+                    kind2 = clang::BuiltinType::UChar;
+                } else if (modifier == "h") {
+                    expected = "unsigned short *";
+                    kind1 = clang::BuiltinType::Short;
+                    kind2 = clang::BuiltinType::UShort;
+                } else if (modifier == "l") {
+                    expected = "unsigned long *";
+                    kind1 = clang::BuiltinType::Long;
+                    kind2 = clang::BuiltinType::ULong;
+                } else if (modifier == "ll") {
+                    expected = "unsigned long long *";
+                    kind1 = clang::BuiltinType::LongLong;
+                    kind2 = clang::BuiltinType::ULongLong;
+                } else if (modifier == "j") { // ptrdiff_t
+                    expected = "ptrdiff_t *";
+                    kind1 = ptrdiff_type_kind;
+                    kind2 = uptrdiff_type_kind;
+                } else if (modifier == "z") { // size_t
+                    expected = "size_t *";
+                    kind1 = ssize_type_kind;
+                    kind2 = size_type_kind;
+                } else if (modifier == "t") { // intmax_t
+                    expected = "uintmax_t *";
+                    kind1 = intmax_type_kind;
+                    kind2 = uintmax_type_kind;
+                } else {
+                    // Modifier not compatible
+                    diagnostics.Report(warn_here,
+                            warn_format_nonsensical_length)
+                        << modifier << type;
+                    expected = "unsigned int *";
+                    kind1 = clang::BuiltinType::Int;
+                    kind2 = clang::BuiltinType::UInt;
+                }
+                break;
+
+            case 'f':
+            case 'F':
+            case 'e':
+            case 'E':
+            case 'g':
+            case 'G':
+            case 'a':
+            case 'A':
+                if (modifier.empty()) {
+                    expected = "float *";
+                    kind1 = clang::BuiltinType::Float;
+                } else if (modifier == "l") {
+                    kind1 = clang::BuiltinType::Double;
+                    expected = "double *";
+                } else if (modifier == "ll") {
+                    expected = "long double *";
+                    kind1 = clang::BuiltinType::LongDouble;
+                } else {
+                    // Modifier not compatible
+                    diagnostics.Report(warn_here,
+                            warn_format_nonsensical_length)
+                        << modifier << type;
+                    expected = "float *";
+                    kind1 = clang::BuiltinType::Double;
+                }
+                kind2 = kind1;
+                break;
+
+            case 'c':
+            case 's':
+            case '[':
+                if (width == 0U && desc.type != FormatStringType::scanf_s) {
+                    diagnostics.Report(warn_here,
+                            plugin_warn_need_width)
+                        << type.substr(0, 1);
+                }
+                if (modifier.empty()) {
+                    expected = "char *";
+                    kind1 = clang::BuiltinType::Char_S;
+                    kind2 = clang::BuiltinType::Char_U;
+                } else if (modifier == "l") { // wchar_t
+                    expected = "wchar_t *";
+                    kind1 = wchar_type_kind;
+                    kind2 = kind1;
+                } else {
+                    // Modifier not compatible
+                    diagnostics.Report(warn_here,
+                            warn_format_nonsensical_length)
+                        << modifier << type;
+                    expected = "char *";
+                    kind1 = clang::BuiltinType::Char_S;
+                    kind2 = clang::BuiltinType::Char_U;
+                }
+                break;
+
+            case 'p':
+                if (!modifier.empty()) {
+                    // Modifier not compatible
+                    diagnostics.Report(warn_here,
+                            warn_format_nonsensical_length)
+                        << modifier << type;
+                }
+                expected = "void **";
+                break;
+
+            case 'C':
+            case 'S': // wchar_t
+                if (width == 0U && desc.type != FormatStringType::scanf_s) {
+                    diagnostics.Report(warn_here,
+                            plugin_warn_need_width)
+                        << type.substr(0, 1);
+                }
+                if (!modifier.empty()) {
+                    // Modifier not compatible
+                    diagnostics.Report(warn_here,
+                            warn_format_nonsensical_length)
+                        << modifier << type;
+                }
+                expected = "wchar_t *";
+                kind1 = wchar_type_kind;
+                kind2 = kind1;
+                break;
+
+            default:
+                // Unknown type specifier
+                diagnostics.Report(warn_here,
+                        warn_format_invalid_conversion)
+                    << type;
+                break;
+            }
+
+            if (!expected.empty() && param < args.size() && desc.var_arg != 0U) {
+                bool warn_match = false;
+                const clang::Expr *arg = args[param];
+                clang::QualType argtype = arg->getType();
+
+                // Expected type is always a non-const pointer; kind1 and
+                // kind2 indicate the type of the dereference
+                if (!argtype->isPointerType()
+                        || argtype->getPointeeType().isConstQualified()) {
+                    warn_match = true;
+                } else if (type == "p") {
+                    // Accept any pointer type
+                    warn_match = !argtype->getPointeeType()->isPointerType();
+                } else {
+                    const clang::Type *ptype = argtype->getPointeeType().getTypePtrOrNull();
+                    const clang::BuiltinType *bi_type = nullptr;
+
+                    if (ptype != nullptr) {
+                        bi_type = clang::dyn_cast<clang::BuiltinType>(ptype);
+                    }
+                    if (bi_type == nullptr) {
+                        warn_match = true;
+                    } else {
+                        clang::BuiltinType::Kind arg_kind = bi_type->getKind();
+                        warn_match = (arg_kind != kind1 && arg_kind != kind2);
+                    }
+                }
+                if (warn_match) {
+                    // Type does not match
+                    diagnostics.Report(warn_here,
+                            warn_format_conversion_argument_type_mismatch)
+                        << "'" + expected + "'"
+                        << "'" + arg->getType().getAsString() + "'"
+                        << 0;
+                }
+            }
+
+            // For scanf_s, the string conversions accept two arguments, and
+            // the second one is size_t.
+            // POSIX does not specify scanf_s, and no POSIX-like implementation
+            // of scanf_s is known. Assume that the size follows the array;
+            // that is, %1$s accepts a char * as argument 1, and a size_t as
+            // argument 2.
+            if (desc.type == FormatStringType::scanf_s
+                    && std::strchr("cs[CS", type[0]) != nullptr) {
+                unsigned param2 = param + 1U;
+                if (!param_str.empty()) {
+                    positions_used.push_back(positions_used.back() + 1);
+                } else {
+                    ++position;
+                }
+                if (param2 >= args.size()) {
+                    if (param_str.empty()) {
+                        if (!long_warned) {
+                            diagnostics.Report(warn_here,
+                                    warn_printf_insufficient_data_args);
+                            long_warned = true;
+                        }
+                    } else {
+                        diagnostics.Report(warn_here,
+                                warn_printf_positional_arg_exceeds_data_args)
+                            << param2
+                            << static_cast<unsigned>(args.size() - (desc.var_arg - 1U));
+                    }
+                } else {
+                    const clang::Expr *arg = args[param2];
+                    clang::QualType argtype = arg->getType();
+                    const clang::BuiltinType *bi_type = clang::dyn_cast<clang::BuiltinType>(argtype);
+                    bool warn_match;
+                    if (bi_type == nullptr) {
+                        warn_match = true;
+                    } else {
+                        clang::BuiltinType::Kind kind = bi_type->getKind();
+                        warn_match = (kind != size_type_kind && kind != ssize_type_kind);
+                    }
+                    if (warn_match) {
+                        // Type does not match
+                        diagnostics.Report(warn_here,
+                                warn_format_conversion_argument_type_mismatch)
+                            << "'rsize_t'"
+                            << "'" + argtype.getAsString() + "'"
+                            << 0;
+                    }
                 }
             }
         }
@@ -1110,10 +1533,12 @@ private:
     unsigned warn_format_mix_positional_nonpositional_args;
     unsigned warn_printf_nonsensical_flag;
     unsigned warn_printf_data_arg_not_used;
+    unsigned warn_scanf_nonzero_width;
     unsigned plugin_warn_duplicate_flag;
     unsigned plugin_warn_bad_percent;
     unsigned plugin_warn_zero_and_precision;
     unsigned plugin_warn_n_format;
+    unsigned plugin_warn_need_width;
     clang::BuiltinType::Kind size_type_kind;
     clang::BuiltinType::Kind ssize_type_kind;
     clang::BuiltinType::Kind intmax_type_kind;
