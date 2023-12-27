@@ -5,6 +5,7 @@
 #include <string>
 #include <cstring>
 #include <limits>
+#include <clang/Basic/Version.h>
 #include <clang/AST/Expr.h>
 #include "utf8string.h"
 
@@ -73,19 +74,17 @@ std::string stringFromBytes(clang::StringLiteral const *str)
 
 std::string stringToUTF8(clang::StringLiteral const *str)
 {
-    switch (str->getKind()) {
-    case clang::StringLiteral::Ascii:
-    case clang::StringLiteral::UTF8:
+    switch (str->getCharByteWidth()) {
+    case 1:
         return str->getString().str();
 
-    case clang::StringLiteral::Wide:
-        // Assume UTF-32 if range is sufficient; else UTF-16
-        return stringFromBytes<wchar_t, std::numeric_limits<wchar_t>::max() >= 0x10FFFF>(str);
-
-    case clang::StringLiteral::UTF16:
+    case 2:
         return stringFromBytes<char16_t, false>(str);
 
-    case clang::StringLiteral::UTF32:
+    case 4:
         return stringFromBytes<char32_t, true>(str);
+
+    default:
+        return "";
     }
 }

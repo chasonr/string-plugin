@@ -75,12 +75,12 @@ public:
                 const clang::Type *type = arg->getType().getTypePtrOrNull();
                 if (type != nullptr && type->isArrayType()) {
                     if (!fs->alternative.empty()) {
-                        diagnostics.Report(arg->getLocStart(), arg_is_array_with_alt) << fs->arg << name << fs->alternative;
+                        diagnostics.Report(arg->getExprLoc(), arg_is_array_with_alt) << fs->arg << name << fs->alternative;
                     } else {
-                        diagnostics.Report(arg->getLocStart(), arg_is_array) << fs->arg << name;
+                        diagnostics.Report(arg->getExprLoc(), arg_is_array) << fs->arg << name;
                     }
                 } else {
-                    diagnostics.Report(arg->getLocStart(), arg_is_pointer) << fs->arg << name;
+                    diagnostics.Report(arg->getExprLoc(), arg_is_pointer) << fs->arg << name;
                 }
             }
         }
@@ -108,7 +108,7 @@ public:
         if (x_type == nullptr) { return true; }
         if (!x_type->isPointerType()) { return true; }
 
-        diagnostics.Report(op->getLocStart(), suspicious_sizeof);
+        diagnostics.Report(op->getExprLoc(), suspicious_sizeof);
         return true;
     }
 

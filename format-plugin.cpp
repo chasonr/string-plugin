@@ -408,14 +408,20 @@ private:
 
         for (auto i = formats.begin(); i != formats.end(); ++i) {
             clang::StringLiteral *fexpr = nullptr;
-            if (!i->expr->isAscii() && !i->expr->isUTF8()) {
+#if CLANG_VERSION_MAJOR < 15
+            if (!i->expr->isAscii() && !i->expr->isUTF8())
+#else
+            if (!i->expr->isOrdinary() && !i->expr->isUTF8())
+#endif
+            {
                 clang::QualType type = instance.getASTContext().getConstantArrayType(
                         instance.getASTContext().CharTy.withConst(),
                         llvm::APInt(32, i->string.size()+1),
+                        nullptr,
                         clang::ArrayType::Normal, 0);
                 clang::SourceLocation loc =
                         // Offset 1 for the L, u or U prefix
-                        i->expr->getLocStart().getLocWithOffset(1);
+                        i->expr->getExprLoc().getLocWithOffset(1);
                 fexpr = clang::StringLiteral::Create(
                         instance.getASTContext(),
                         clang::StringRef(i->string.c_str(), i->string.size()),
@@ -492,7 +498,7 @@ private:
         for (auto where = format.cbegin(); // Start next match from this offset
              std::regex_search(where, format.cend(), match, format_rx);
              where += match.position() + match.length()) {
-            clang::SourceLocation warn_here = fexpr->getLocStart().getLocWithOffset(
+            clang::SourceLocation warn_here = fexpr->getExprLoc().getLocWithOffset(
                     where - format.cbegin() + match.position() + 1);
 
             // One format specifier
@@ -1010,7 +1016,7 @@ private:
         // Warn if positional and nonpositional parameters are mixed
         if (positional && nonpositional) {
             // Positional and nonpositional parameters are mixed
-            diagnostics.Report(fexpr->getLocStart(),
+            diagnostics.Report(fexpr->getExprLoc(),
                 warn_format_mix_positional_nonpositional_args);
         }
 
@@ -1024,7 +1030,7 @@ private:
                 for (unsigned j = last + 1U; j < *i; ++j) {
                     unsigned pos = desc.var_arg + j - 2U;
                     if (pos >= args.size()) break;
-                    diagnostics.Report(args[pos]->getLocStart(),
+                    diagnostics.Report(args[pos]->getExprLoc(),
                             warn_printf_data_arg_not_used);
                 }
                 last = *i;
@@ -1034,7 +1040,7 @@ private:
         // Warn if arguments at the end are unused
         for (unsigned pos = desc.var_arg + position - 1U;
                 pos < args.size(); ++pos) {
-            diagnostics.Report(args[pos]->getLocStart(),
+            diagnostics.Report(args[pos]->getExprLoc(),
                     warn_printf_data_arg_not_used);
         }
     }
@@ -1071,7 +1077,7 @@ private:
         for (auto where = format.cbegin(); // Start next match from this offset
              std::regex_search(where, format.cend(), match, format_rx);
              where += match.position() + match.length()) {
-            clang::SourceLocation warn_here = fexpr->getLocStart().getLocWithOffset(
+            clang::SourceLocation warn_here = fexpr->getExprLoc().getLocWithOffset(
                     where - format.cbegin() + match.position() + 1);
 
             // One format specifier
@@ -1421,7 +1427,7 @@ private:
         // Warn if positional and nonpositional parameters are mixed
         if (positional && nonpositional) {
             // Positional and nonpositional parameters are mixed
-            diagnostics.Report(fexpr->getLocStart(),
+            diagnostics.Report(fexpr->getExprLoc(),
                 warn_format_mix_positional_nonpositional_args);
         }
 
@@ -1435,7 +1441,7 @@ private:
                 for (unsigned j = last + 1U; j < *i; ++j) {
                     unsigned pos = desc.var_arg + j - 2U;
                     if (pos >= args.size()) break;
-                    diagnostics.Report(args[pos]->getLocStart(),
+                    diagnostics.Report(args[pos]->getExprLoc(),
                             warn_printf_data_arg_not_used);
                 }
                 last = *i;
@@ -1445,7 +1451,7 @@ private:
         // Warn if arguments at the end are unused
         for (unsigned pos = desc.var_arg + position - 1U;
                 pos < args.size(); ++pos) {
-            diagnostics.Report(args[pos]->getLocStart(),
+            diagnostics.Report(args[pos]->getExprLoc(),
                     warn_printf_data_arg_not_used);
         }
     }
@@ -1470,7 +1476,7 @@ private:
                          a != d->specific_attr_end<clang::FormatArgAttr>(); ++a) {
                         // The function may have any number of format_arg attributes;
                         // this allows the function to accept multiple format strings
-                        getFormatStrings(formats, call->getArg((*a)->getFormatIdx()-1));
+                        getFormatStrings(formats, call->getArg((*a)->getFormatIdx().getLLVMIndex()));
                     }
                 } else {
                     auto ident = d->getIdentifier();
@@ -1515,7 +1521,7 @@ private:
 
     warn:
         // Can't process this format; raise a warning
-        diagnostics.Report(arg->getLocStart(), warn_format_nonliteral);
+        diagnostics.Report(arg->getExprLoc(), warn_format_nonliteral);
     }
 
     clang::CompilerInstance& instance;
